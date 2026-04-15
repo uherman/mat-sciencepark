@@ -1,4 +1,4 @@
-# mat
+# matmat
 
 CLI som skriver ut dagens lunch på Mattias Mat-restaurangerna (Växthuset och
 Orangeriet) i Skövde. Menyerna hämtas från
@@ -40,10 +40,10 @@ Veckodag beräknas i `Europe/Stockholm`, oavsett systemets lokala tidszon.
 ## TLS-fallback
 
 På vissa nät (t.ex. företagsproxyer med MITM-certifikat) kan certifikatet
-avvisas av strikta validerare (`unknownissuer` via rustls, *Missing Authority
-Key Identifier* i Python 3.14). Menyn är publik och icke-känslig, så binären
-faller tyst tillbaka till oäkta verifiering för de kända signaturerna. Andra
-SSL-fel skriver en varning till stderr innan retry.
+avvisas av strikta validerare (`unknownissuer` via rustls/webpki). Menyn är
+publik och icke-känslig, så binären faller tyst tillbaka till oäkta
+verifiering för de kända signaturerna. Andra SSL-fel skriver en varning till
+stderr innan retry.
 
 ## Bygga från källkod
 

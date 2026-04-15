@@ -202,8 +202,7 @@ fn fetch(url: &str) -> Result<String, String> {
         Ok(body) => Ok(body),
         Err(e) if looks_like_tls_error(&e) => {
             // Företags-SSL-proxyer presenterar certifikat som strikta
-            // validerare avvisar (t.ex. saknad Authority Key Identifier
-            // i Python 3.14, eller "unknownissuer" via rustls/webpki).
+            // validerare avvisar ("unknownissuer" via rustls/webpki).
             // Menyn är publik och icke-känslig — prova igen utan verifiering.
             // Var tyst för de kända signaturerna; varna för andra SSL-fel så
             // att verkliga problem märks.
