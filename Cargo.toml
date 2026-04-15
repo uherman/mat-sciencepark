@@ -1,6 +1,6 @@
 [package]
 name = "matmat"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "Visa dagens lunch på Mattias Mat-restaurangerna (Skövde) — med veckocache."
 license = "MIT"
