@@ -28,8 +28,9 @@ Veckodag beräknas i `Europe/Stockholm`, oavsett systemets lokala tidszon.
 
 ## Hur cachen fungerar
 
-- Menyerna lagras i `~/Library/Caches/mat/` på macOS eller
-  `$XDG_CACHE_HOME/mat/` (fallback `~/.cache/mat/`) på Linux.
+- Menyerna lagras i `~/Library/Caches/mat/` på macOS,
+  `$XDG_CACHE_HOME/mat/` (fallback `~/.cache/mat/`) på Linux, och
+  `%LOCALAPPDATA%\mat\Cache\` på Windows.
 - Cache-nyckeln är ISO-veckan (t.ex. `2026-W16`). När veckan rullar över missar
   cachen automatiskt och menyn hämtas på nytt.
 - Vid en cache-hit skrivs resultatet direkt (~10 ms) och en detached

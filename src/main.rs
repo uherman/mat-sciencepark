@@ -107,7 +107,19 @@ fn cache_dir() -> Option<PathBuf> {
     {
         std::env::var_os("HOME").map(|h| PathBuf::from(h).join("Library/Caches/mat"))
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
+    {
+        // Windows saknar normalt HOME/XDG_CACHE_HOME. Föredra LOCALAPPDATA
+        // (t.ex. C:\Users\<user>\AppData\Local), fall tillbaka på
+        // USERPROFILE\AppData\Local om LOCALAPPDATA inte är satt.
+        let base = std::env::var_os("LOCALAPPDATA")
+            .map(PathBuf::from)
+            .or_else(|| {
+                std::env::var_os("USERPROFILE").map(|h| PathBuf::from(h).join("AppData/Local"))
+            })?;
+        Some(base.join("mat/Cache"))
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
         let base = std::env::var_os("XDG_CACHE_HOME")
             .map(PathBuf::from)
