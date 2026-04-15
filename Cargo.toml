@@ -6,9 +6,10 @@ description = "Visa dagens lunch på Mattias Mat-restaurangerna (Skövde) — me
 license = "MIT"
 readme = "README.md"
 authors = ["Herman Brunberg <herman.brunberg@mio.se>"]
+repository = "https://github.com/uherman/matmat"
+homepage = "https://github.com/uherman/matmat"
 keywords = ["cli", "lunch", "skovde", "mat", "mattiasmat"]
 categories = ["command-line-utilities"]
-# `repository` och `homepage` fylls i av set-repo-url-steget i README.
 
 [[bin]]
 name = "mat"

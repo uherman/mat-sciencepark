@@ -48,7 +48,7 @@ SSL-fel skriver en varning till stderr innan retry.
 ## Bygga från källkod
 
 ```sh
-git clone https://github.com/<USERNAME>/matmat
+git clone https://github.com/uherman/matmat
 cd matmat
 cargo build --release
 ./target/release/mat
