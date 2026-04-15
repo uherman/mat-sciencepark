@@ -1,4 +1,4 @@
-# matmat
+# mat-sciencepark
 
 CLI som skriver ut dagens lunch på Mattias Mat-restaurangerna (Växthuset och
 Orangeriet) i Skövde. Menyerna hämtas från
@@ -8,7 +8,7 @@ upprepade körningar är i princip omedelbara.
 ## Installation
 
 ```sh
-cargo install matmat
+cargo install mat-sciencepark
 ```
 
 Binären heter `mat` och installeras i `~/.cargo/bin/`.
@@ -48,8 +48,8 @@ stderr innan retry.
 ## Bygga från källkod
 
 ```sh
-git clone https://github.com/uherman/matmat
-cd matmat
+git clone https://github.com/uherman/mat-sciencepark
+cd mat-sciencepark
 cargo build --release
 ./target/release/mat
 ```

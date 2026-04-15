@@ -35,7 +35,7 @@ jobs:
         id: check
         run: |
           STATUS=$(curl -sL -o /dev/null -w "%{http_code}" \
-            -H "User-Agent: matmat-publish-workflow" \
+            -H "User-Agent: mat-sciencepark-publish-workflow" \
             "https://crates.io/api/v1/crates/${{ steps.meta.outputs.name }}/${{ steps.meta.outputs.version }}")
           if [ "$STATUS" = "200" ]; then
             echo "Version ${{ steps.meta.outputs.version }} finns redan på crates.io — hoppar över."

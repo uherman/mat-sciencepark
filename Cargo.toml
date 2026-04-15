@@ -1,13 +1,13 @@
 [package]
-name = "matmat"
+name = "mat-sciencepark"
 version = "0.1.1"
 edition = "2021"
 description = "Visa dagens lunch på Mattias Mat-restaurangerna (Skövde) — med veckocache."
 license = "MIT"
 readme = "README.md"
 authors = ["Herman Brunberg <herman.brunberg@mio.se>"]
-repository = "https://github.com/uherman/matmat"
-homepage = "https://github.com/uherman/matmat"
+repository = "https://github.com/uherman/mat-sciencepark"
+homepage = "https://github.com/uherman/mat-sciencepark"
 keywords = ["cli", "lunch", "skovde", "mat", "mattiasmat"]
 categories = ["command-line-utilities"]
 
