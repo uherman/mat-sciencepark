@@ -7,20 +7,30 @@
 use std::collections::HashMap;
 use std::error::Error as StdError;
 use std::fs;
+use std::io::IsTerminal;
 use std::path::PathBuf;
 use std::process::{Command, ExitCode, Stdio};
 use std::sync::LazyLock;
 use std::time::Duration;
 
-use chrono::{Datelike, Utc};
+use chrono::{DateTime, Datelike, TimeDelta, Utc};
 use chrono_tz::Europe::Stockholm;
-use clap::{Parser, ValueEnum};
+use clap::{Parser, Subcommand, ValueEnum};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
 const DAYS: [&str; 7] = [
     "Måndag", "Tisdag", "Onsdag", "Torsdag", "Fredag", "Lördag", "Söndag",
 ];
+
+const CRATE_NAME: &str = env!("CARGO_PKG_NAME");
+const CRATE_VERSION: &str = env!("CARGO_PKG_VERSION");
+const USER_AGENT: &str = concat!(
+    env!("CARGO_PKG_NAME"),
+    "/",
+    env!("CARGO_PKG_VERSION"),
+    " (https://github.com/uherman/mat-sciencepark)"
+);
 
 #[derive(Copy, Clone, ValueEnum)]
 enum Restaurant {
@@ -58,9 +68,12 @@ impl Restaurant {
 #[derive(Parser)]
 #[command(
     name = "mat",
-    about = "Visa dagens lunch på Mattias Mat-restaurangerna (Skövde)."
+    about = "Visa dagens lunch på Mattias Mat-restaurangerna (Skövde).",
+    after_help = "Tips: kör `mat update` för att uppdatera till senaste versionen från crates.io."
 )]
 struct Args {
+    #[command(subcommand)]
+    command: Option<Commands>,
     /// begränsa till en restaurang (default: alla)
     restaurant: Option<Restaurant>,
     /// visa hela veckans meny
@@ -73,6 +86,15 @@ struct Args {
     /// huvudprocessen för att refresha cache i bakgrunden.
     #[arg(long, hide = true)]
     background_refresh: bool,
+    /// Intern: kollar senaste version på crates.io och skriver cache.
+    #[arg(long, hide = true)]
+    background_version_check: bool,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Uppdatera mat till senaste versionen via `cargo install`.
+    Update,
 }
 
 static DAY_MARKER: LazyLock<Regex> = LazyLock::new(|| {
@@ -92,6 +114,12 @@ struct CacheEntry {
     week_no: Option<String>,
     week: HashMap<String, Vec<String>>,
     fetched_at: String,
+}
+
+#[derive(Serialize, Deserialize)]
+struct VersionCache {
+    latest: String,
+    checked_at: String,
 }
 
 fn current_iso_week() -> String {
@@ -181,6 +209,120 @@ fn spawn_background_refresh(r: Restaurant) {
         .spawn();
 }
 
+fn version_cache_path() -> Option<PathBuf> {
+    cache_dir().map(|d| d.join("version.json"))
+}
+
+fn read_version_cache() -> Option<VersionCache> {
+    let path = version_cache_path()?;
+    let bytes = fs::read(&path).ok()?;
+    serde_json::from_slice(&bytes).ok()
+}
+
+fn write_version_cache(entry: &VersionCache) {
+    let Some(path) = version_cache_path() else {
+        return;
+    };
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let Ok(json) = serde_json::to_vec_pretty(entry) else {
+        return;
+    };
+    let tmp = path.with_extension("json.tmp");
+    if fs::write(&tmp, &json).is_ok() {
+        let _ = fs::rename(&tmp, &path);
+    }
+}
+
+fn parse_version(v: &str) -> Option<(u64, u64, u64)> {
+    let core = v.split(['-', '+']).next()?;
+    let mut it = core.split('.');
+    let maj: u64 = it.next()?.parse().ok()?;
+    let min: u64 = it.next()?.parse().ok()?;
+    let patch: u64 = it.next().and_then(|p| p.parse().ok()).unwrap_or(0);
+    Some((maj, min, patch))
+}
+
+fn is_newer(latest: &str, current: &str) -> bool {
+    matches!(
+        (parse_version(latest), parse_version(current)),
+        (Some(l), Some(c)) if l > c
+    )
+}
+
+fn version_cache_is_fresh(cached: &VersionCache) -> bool {
+    let Ok(then) = DateTime::parse_from_rfc3339(&cached.checked_at) else {
+        return false;
+    };
+    Utc::now().signed_duration_since(then.with_timezone(&Utc)) < TimeDelta::hours(24)
+}
+
+fn fetch_latest_version() -> Result<String, String> {
+    let body = fetch(&format!("https://crates.io/api/v1/crates/{CRATE_NAME}"))?;
+    let value: serde_json::Value = serde_json::from_str(&body).map_err(|e| e.to_string())?;
+    value["crate"]["max_stable_version"]
+        .as_str()
+        .or_else(|| value["crate"]["newest_version"].as_str())
+        .map(|s| s.to_string())
+        .ok_or_else(|| "ingen version i svaret från crates.io".to_string())
+}
+
+fn run_background_version_check() {
+    let Ok(latest) = fetch_latest_version() else {
+        return;
+    };
+    let entry = VersionCache {
+        latest,
+        checked_at: Utc::now().with_timezone(&Stockholm).to_rfc3339(),
+    };
+    write_version_cache(&entry);
+}
+
+fn spawn_background_version_check() {
+    if read_version_cache()
+        .as_ref()
+        .map(version_cache_is_fresh)
+        .unwrap_or(false)
+    {
+        return;
+    }
+    let Ok(exe) = std::env::current_exe() else {
+        return;
+    };
+    let _ = Command::new(exe)
+        .arg("--background-version-check")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn();
+}
+
+fn stderr_supports_color() -> bool {
+    if std::env::var_os("NO_COLOR").is_some() {
+        return false;
+    }
+    std::io::stderr().is_terminal()
+}
+
+fn print_update_notice() {
+    let Some(cached) = read_version_cache() else {
+        return;
+    };
+    if !is_newer(&cached.latest, CRATE_VERSION) {
+        return;
+    }
+    let body = format!(
+        "✨ mat: ny version finns på crates.io — {} (du kör {}). Kör `mat update` för att uppdatera.",
+        cached.latest, CRATE_VERSION
+    );
+    if stderr_supports_color() {
+        eprintln!("\n\x1b[1;33m{body}\x1b[0m");
+    } else {
+        eprintln!("\n{body}");
+    }
+}
+
 fn load_or_fetch(r: Restaurant, force_refresh: bool) -> Result<CacheEntry, String> {
     if !force_refresh {
         if let Some(cached) = read_cache(r) {
@@ -194,11 +336,10 @@ fn load_or_fetch(r: Restaurant, force_refresh: bool) -> Result<CacheEntry, Strin
 }
 
 fn fetch(url: &str) -> Result<String, String> {
-    let ua = "mat-cli/1.0";
     let timeout = Duration::from_secs(10);
     let request = |accept_invalid: bool| -> Result<String, reqwest::Error> {
         reqwest::blocking::Client::builder()
-            .user_agent(ua)
+            .user_agent(USER_AGENT)
             .timeout(timeout)
             .danger_accept_invalid_certs(accept_invalid)
             .build()?
@@ -382,8 +523,33 @@ fn render(r: Restaurant, show_week: bool, today: &str, force_refresh: bool) -> i
     0
 }
 
+fn run_update() -> ExitCode {
+    eprintln!("Uppdaterar {CRATE_NAME} via `cargo install`...");
+    let status = Command::new("cargo")
+        .args(["install", CRATE_NAME])
+        .status();
+    match status {
+        Ok(s) if s.success() => ExitCode::SUCCESS,
+        Ok(s) => {
+            eprintln!(
+                "mat: `cargo install` avslutades med kod {}",
+                s.code().unwrap_or(-1)
+            );
+            ExitCode::FAILURE
+        }
+        Err(e) => {
+            eprintln!("mat: kunde inte starta cargo ({e}). Är cargo installerat och i $PATH?");
+            ExitCode::FAILURE
+        }
+    }
+}
+
 fn main() -> ExitCode {
     let args = Args::parse();
+
+    if let Some(Commands::Update) = args.command {
+        return run_update();
+    }
 
     // Bakgrundsrefresh-läge: hämta + spara, inga utskrifter, avsluta tyst.
     if args.background_refresh {
@@ -396,6 +562,13 @@ fn main() -> ExitCode {
         }
         return ExitCode::SUCCESS;
     }
+
+    if args.background_version_check {
+        run_background_version_check();
+        return ExitCode::SUCCESS;
+    }
+
+    spawn_background_version_check();
 
     let keys: Vec<Restaurant> = match args.restaurant {
         Some(r) => vec![r],
@@ -410,6 +583,8 @@ fn main() -> ExitCode {
         }
         rc |= render(*r, args.week, today, args.refresh);
     }
+
+    print_update_notice();
 
     if rc == 0 {
         ExitCode::SUCCESS
