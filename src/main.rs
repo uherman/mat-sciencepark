@@ -472,6 +472,52 @@ fn parse_week_number(page: &str) -> Option<String> {
         .map(|m| m.as_str().to_string())
 }
 
+fn is_weekly_dish(dish: &str) -> bool {
+    dish.to_lowercase().starts_with("veckans ")
+}
+
+fn capitalize(s: &str) -> String {
+    let mut chars = s.chars();
+    match chars.next() {
+        Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
+        None => String::new(),
+    }
+}
+
+fn format_weekly(dish: &str) -> String {
+    let mut parts = dish.splitn(3, ' ');
+    match (parts.next(), parts.next(), parts.next()) {
+        (Some(prefix), Some(kind), Some(rest)) if prefix.eq_ignore_ascii_case("veckans") => {
+            format!("{} {}: {}", capitalize(prefix), capitalize(kind), rest)
+        }
+        _ => dish.to_string(),
+    }
+}
+
+fn split_weekly(
+    week: &HashMap<String, Vec<String>>,
+) -> (Vec<String>, HashMap<String, Vec<String>>) {
+    let mut weekly: Vec<String> = Vec::new();
+    let mut per_day: HashMap<String, Vec<String>> = HashMap::new();
+    for day in DAYS.iter() {
+        let Some(dishes) = week.get(*day) else {
+            continue;
+        };
+        let mut filtered = Vec::new();
+        for dish in dishes {
+            if is_weekly_dish(dish) {
+                if !weekly.iter().any(|w| w == dish) {
+                    weekly.push(dish.clone());
+                }
+            } else {
+                filtered.push(dish.clone());
+            }
+        }
+        per_day.insert((*day).to_string(), filtered);
+    }
+    (weekly, per_day)
+}
+
 fn today_day_name() -> &'static str {
     let idx = Utc::now()
         .with_timezone(&Stockholm)
@@ -498,15 +544,22 @@ fn render(r: Restaurant, show_week: bool, today: &str, force_refresh: bool) -> i
 
     if show_week {
         println!("{name} — hela veckan{suffix}");
+        let (weekly, per_day) = split_weekly(&entry.week);
         for day in DAYS.iter() {
             println!("  {day}:");
-            match entry.week.get(*day) {
-                Some(dishes) => {
+            match per_day.get(*day) {
+                Some(dishes) if !dishes.is_empty() => {
                     for dish in dishes {
                         println!("    • {dish}");
                     }
                 }
-                None => println!("    • —"),
+                _ => println!("    • —"),
+            }
+        }
+        if !weekly.is_empty() {
+            println!("  Hela veckan:");
+            for dish in &weekly {
+                println!("    • {}", format_weekly(dish));
             }
         }
     } else {
