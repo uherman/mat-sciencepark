@@ -95,6 +95,8 @@ struct Args {
 enum Commands {
     /// Uppdatera mat till senaste versionen via `cargo install`.
     Update,
+    /// Kolla om det finns en ny version på crates.io.
+    CheckUpdates,
 }
 
 static DAY_MARKER: LazyLock<Regex> = LazyLock::new(|| {
@@ -576,6 +578,31 @@ fn render(r: Restaurant, show_week: bool, today: &str, force_refresh: bool) -> i
     0
 }
 
+fn run_check_updates() -> ExitCode {
+    match fetch_latest_version() {
+        Ok(latest) => {
+            let entry = VersionCache {
+                latest: latest.clone(),
+                checked_at: Utc::now().with_timezone(&Stockholm).to_rfc3339(),
+            };
+            write_version_cache(&entry);
+
+            if is_newer(&latest, CRATE_VERSION) {
+                println!(
+                    "Ny version finns: {latest} (du kör {CRATE_VERSION}). Kör `mat update` för att uppdatera."
+                );
+            } else {
+                println!("Du kör senaste versionen ({CRATE_VERSION}).");
+            }
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            eprintln!("mat: kunde inte kolla version: {e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
 fn run_update() -> ExitCode {
     eprintln!("Uppdaterar {CRATE_NAME} via `cargo install`...");
     let status = Command::new("cargo")
@@ -603,6 +630,9 @@ fn main() -> ExitCode {
     if let Some(Commands::Update) = args.command {
         return run_update();
     }
+    if let Some(Commands::CheckUpdates) = args.command {
+        return run_check_updates();
+    }
 
     // Bakgrundsrefresh-läge: hämta + spara, inga utskrifter, avsluta tyst.
     if args.background_refresh {
@@ -621,7 +651,11 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
 
-    spawn_background_version_check();
+    if args.refresh {
+        run_background_version_check();
+    } else {
+        spawn_background_version_check();
+    }
 
     let keys: Vec<Restaurant> = match args.restaurant {
         Some(r) => vec![r],
