@@ -1,6 +1,6 @@
 [package]
 name = "mat-sciencepark"
-version = "0.1.2"
+version = "0.1.3"
 edition = "2021"
 description = "Visa dagens lunch på Mattias Mat-restaurangerna (Skövde) — med veckocache."
 license = "MIT"

@@ -75,16 +75,14 @@ struct Args {
     background_refresh: bool,
 }
 
-static VECKANS_LUNCH: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r#"(?s)<div class="veckans-lunch">(.*?)</div>"#).unwrap());
-
 static DAY_MARKER: LazyLock<Regex> = LazyLock::new(|| {
     let alt = DAYS.join("|");
     Regex::new(&format!(r"<strong>({alt}):</strong>")).unwrap()
 });
 
 static TAG: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<[^>]+>").unwrap());
-static P_OPEN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<p\b[^>]*>").unwrap());
+static BLOCK_OPEN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"<(?:p|div)\b[^>]*>").unwrap());
 static WS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s+").unwrap());
 static VECKA: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"Vecka\s+(\d+)").unwrap());
 
@@ -264,13 +262,37 @@ fn clean(fragment: &str) -> String {
     collapsed.trim_end_matches(':').trim().to_string()
 }
 
+fn extract_veckans_lunch(page: &str) -> Option<&str> {
+    const MARKER: &str = "<div class=\"veckans-lunch\">";
+    let start = page.find(MARKER)?;
+    let body_start = start + MARKER.len();
+    let mut depth: usize = 1;
+    let mut cursor = body_start;
+    while depth > 0 {
+        let rest = &page[cursor..];
+        let open = rest.find("<div");
+        let close = rest.find("</div>");
+        match (open, close) {
+            (Some(o), Some(c)) if o < c => {
+                depth += 1;
+                cursor += o + "<div".len();
+            }
+            (_, Some(c)) => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(&page[body_start..cursor + c]);
+                }
+                cursor += c + "</div>".len();
+            }
+            (_, None) => return None,
+        }
+    }
+    Some(&page[body_start..cursor])
+}
+
 fn parse_week(page: &str) -> Result<HashMap<String, Vec<String>>, String> {
-    let block = VECKANS_LUNCH
-        .captures(page)
-        .ok_or_else(|| "hittade inte veckans-lunch-blocket på sidan".to_string())?
-        .get(1)
-        .unwrap()
-        .as_str();
+    let block = extract_veckans_lunch(page)
+        .ok_or_else(|| "hittade inte veckans-lunch-blocket på sidan".to_string())?;
 
     // Samla dag-markörers positioner och namn. Regex-crate stöder inte
     // lookahead, så vi iterar markörer parvis och tar innehållet mellan dem.
@@ -288,9 +310,9 @@ fn parse_week(page: &str) -> Result<HashMap<String, Vec<String>>, String> {
         let next_start = markers
             .get(i + 1)
             .map(|(s, _, _)| *s)
-            .unwrap_or_else(|| block.len());
+            .unwrap_or(block.len());
         let body = &block[*end..next_start];
-        let dishes: Vec<String> = P_OPEN
+        let dishes: Vec<String> = BLOCK_OPEN
             .split(body)
             .map(clean)
             .filter(|d| !d.is_empty())
